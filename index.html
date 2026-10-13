@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Makmal Poligon Interaktif AI</title>
+    <!-- Tailwind CSS v4 CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <!-- MediaPipe Hands & Camera Utils CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <style>
+        /* Mengendalikan cerminan webcam untuk pengalaman pengguna yang semula jadi */
+        .mirror {
+            transform: scaleX(-1);
+        }
+        /* Animasi nadi lembut untuk penunjuk status */
+        @keyframes pulse-slow {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+        .animate-pulse-slow {
+            animation: pulse-slow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen font-sans flex flex-col antialiased selection:bg-emerald-500 selection:text-white">
+
+    <!-- Tajuk Utama & Header -->
+    <header class="bg-slate-900/90 backdrop-blur-md px-6 py-4 shadow-xl border-b border-slate-800 flex flex-col sm:flex-row items-center justify-between z-20">
+        <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 text-xl font-bold">
+                📐
+            </div>
+            <div>
+                <h1 class="text-2xl font-black tracking-tight text-emerald-400 flex items-center gap-2">
+                    Makmal Poligon Interaktif AI
+                    <span class="text-xs px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-semibold border border-emerald-500/30">v2.0 Live</span>
+                </h1>
+                <p class="text-xs text-slate-400 mt-0.5">Terokai geometri menggunakan gerak isyarat tangan AI atau kawalan tetikus secara langsung.</p>
+            </div>
+        </div>
+        <div class="mt-3 sm:mt-0 flex items-center gap-3">
+            <button id="clearBtn" class="px-4 py-2 bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer shadow-sm">
+                <span>🗑️</span> Reset Kanvas
+            </button>
+            <div id="modeIndicator" class="px-3 py-2 bg-slate-800/80 border border-slate-700/80 rounded-xl text-xs font-semibold text-sky-400 flex items-center gap-2">
+                <span id="modeDot" class="w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping"></span> 
+                <span id="modeText">Memuatkan Kamera AI...</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Kandungan Utama / Split Layout -->
+    <main class="flex-1 flex flex-col lg:flex-row p-4 gap-4 h-[calc(100vh-84px)] overflow-hidden">
+        
+        <!-- Bahagian Kiri: Input Kamera & MediaPipe Hands -->
+        <div class="flex-1 bg-slate-900/70 backdrop-blur-md rounded-2xl p-4 border border-slate-800 flex flex-col relative justify-between items-center shadow-2xl min-h-[320px]">
+            <div class="absolute top-6 left-6 bg-slate-950/80 px-3.5 py-1.5 rounded-full text-xs font-semibold text-emerald-400 flex items-center gap-2 z-10 border border-slate-800">
+                <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> MediaPipe Hand Tracking
+            </div>
+            
+            <div class="relative w-full max-w-xl aspect-video bg-black rounded-xl overflow-hidden shadow-2xl border border-slate-800 flex items-center justify-center">
+                <!-- Video Tersembunyi untuk Strim Sumber -->
+                <video id="webcam" class="hidden" autoplay playsinline muted></video>
+                <!-- Kanvas Pemantau Kamera -->
+                <canvas id="cameraCanvas" class="w-full h-full object-cover mirror"></canvas>
+                
+                <!-- Mesej Muat Turun Model/Fallback -->
+                <div id="loadingOverlay" class="absolute inset-0 bg-slate-950/90 flex flex-col items-center justify-center p-6 text-center z-20">
+                    <div class="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+                    <p class="text-sm font-bold text-slate-200">Menghubungkan Kamera & Memuatkan AI Model...</p>
+                    <p class="text-xs text-slate-400 mt-1">Sila benarkan akses kamera pelayar anda apabila diminta.</p>
+                </div>
+            </div>
+
+            <!-- Petunjuk Panduan Isyarat Tangan -->
+            <div class="mt-4 grid grid-cols-3 gap-3 w-full max-w-xl text-center text-xs">
+                <div class="p-2.5 bg-slate-800/80 rounded-xl border border-slate-700/60 shadow-sm flex flex-col justify-center">
+                    <p class="font-black text-amber-400 text-sm mb-0.5">☝️ Telunjuk</p>
+                    <p class="text-slate-300">Tahan 2s untuk buat Bucu</p>
+                </div>
+                <div class="p-2.5 bg-slate-800/80 rounded-xl border border-slate-700/60 shadow-sm flex flex-col justify-center">
+                    <p class="font-black text-sky-400 text-sm mb-0.5">👌 Cubit (Pinch)</p>
+                    <p class="text-slate-300">Pegang & seret bucu bentuk</p>
+                </div>
+                <div class="p-2.5 bg-slate-800/80 rounded-xl border border-slate-700/60 shadow-sm flex flex-col justify-center">
+                    <p class="font-black text-rose-400 text-sm mb-0.5">🖐️ Tapak Terbuka</p>
+                    <p class="text-slate-300">Padam semua bucu poligon</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bahagian Kanan: Kanvas Geometri & Papan Info Statistik -->
+        <div class="flex-1 bg-slate-900/70 backdrop-blur-md rounded-2xl border border-slate-800 flex flex-col shadow-2xl relative overflow-hidden min-h-[420px]">
+            
+            <!-- Paparan Kanvas Utama Geometri -->
+            <div class="flex-1 relative bg-slate-950/80">
+                <canvas id="polygonCanvas" class="w-full h-full cursor-crosshair block"></canvas>
+                <div class="absolute bottom-4 right-4 bg-slate-900/80 backdrop-blur-md px-3 py-1.5 rounded-lg border border-slate-800 text-[11px] text-slate-400 pointer-events-none">
+                    💡 Tips: Anda juga boleh klik atau seret terus dengan tetikus/sentuhan!
+                </div>
+            </div>
+
+            <!-- Papan Maklumat Dinamik Pendidikan -->
+            <div class="p-4 bg-slate-900/90 grid grid-cols-1 sm:grid-cols-3 gap-3 border-t border-slate-800 text-center items-center">
+                <div class="bg-slate-950/60 p-3 rounded-xl border border-slate-800 shadow-inner">
+                    <p class="text-[11px] text-slate-400 uppercase font-extrabold tracking-wider">Nama Bentuk</p>
+                    <p id="shapeName" class="text-base sm:text-lg font-black text-amber-400 mt-0.5 truncate">Tiada Bucu</p>
+                </div>
+                <div class="bg-slate-950/60 p-3 rounded-xl border border-slate-800 shadow-inner">
+                    <p class="text-[11px] text-slate-400 uppercase font-extrabold tracking-wider">Bucu & Sisi</p>
+                    <p id="shapeSides" class="text-base sm:text-lg font-black text-sky-400 mt-0.5 truncate">0 Bucu / 0 Sisi</p>
+                </div>
+                <div class="bg-slate-950/60 p-3 rounded-xl border border-slate-800 shadow-inner">
+                    <p class="text-[11px] text-slate-400 uppercase font-extrabold tracking-wider">Sudut Pedalaman</p>
+                    <p id="shapeAngles" class="text-base sm:text-lg font-black text-emerald-400 mt-0.5 truncate">0°</p>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Logik JavaScript Utama & Pemprosesan AI -->
+    <script>
+        const videoElement = document.getElementById('webcam');
+        const cameraCanvas = document.getElementById('cameraCanvas');
+        const cameraCtx = cameraCanvas.getContext('2d');
+        const polygonCanvas = document.getElementById('polygonCanvas');
+        const polygonCtx = polygonCanvas.getContext('2d');
+        const loadingOverlay = document.getElementById('loadingOverlay');
+
+        // Elemen Antaramuka Info Statistik
+        const shapeNameEl = document.getElementById('shapeName');
+        const shapeSidesEl = document.getElementById('shapeSides');
+        const shapeAnglesEl = document.getElementById('shapeAngles');
+        const modeIndicatorText = document.getElementById('modeText');
+        const modeDot = document.getElementById('modeDot');
+        const clearBtn = document.getElementById('clearBtn');
+
+        // Struktur Data Geometri & Pemasa
+        let vertices = []; // Senarai koordinat bucu [{x, y}]
+        let selectedVertexIndex = null; // Indeks bucu yang sedang diheret
+        let lastHandPos = null;
+        let holdStartTime = null;
+        const HOLD_DURATION = 2000; // 2 saat masa tunda untuk tambah bucu baru
+        let currentProgress = 0;
+        let isWebcamActive = false;
+        let lastVoiceTime = 0;
+
+        // Kamus nama poligon rasmi dalam Bahasa Malaysia
+        const polygonNames = {
+            0: "Tiada Bucu",
+            1: "Titik Tunggal",
+            2: "Garis Lurus",
+            3: "Segitiga (Triangle)",
+            4: "Segi Empat (Quadrilateral)",
+            5: "Pentagon (5 Sisi)",
+            6: "Heksagon (6 Sisi)",
+            7: "Heptagon (7 Sisi)",
+            8: "Oktagon (8 Sisi)",
+            9: "Nonagon (9 Sisi)",
+            10: "Dekagon (10 Sisi)"
+        };
+
+        // Pelaras saiz kanvas automatik responsif
+        function resizeCanvases() {
+            if (cameraCanvas.parentElement) {
+                cameraCanvas.width = cameraCanvas.parentElement.clientWidth;
+                cameraCanvas.height = cameraCanvas.parentElement.clientHeight;
+            }
+            if (polygonCanvas.parentElement) {
+                polygonCanvas.width = polygonCanvas.parentElement.clientWidth;
+                polygonCanvas.height = polygonCanvas.parentElement.clientHeight;
+            }
+            drawPolygon();
+        }
+        window.addEventListener('resize', resizeCanvases);
+        setTimeout(resizeCanvases, 300);
+
+        // Sintesis Suara Bahasa Malaysia (Web Speech API)
+        function playVoiceFeedback(text) {
+            if ('speechSynthesis' in window && (Date.now() - lastVoiceTime > 3000)) {
+                window.speechSynthesis.cancel();
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.lang = 'ms-MY';
+                utterance.rate = 1.0;
+                window.speechSynthesis.speak(utterance);
+                lastVoiceTime = Date.now();
+            }
+        }
+
+        // Pengiraan Matematik & Kemas Kini Papan Statistik
+        function updatePolygonStats() {
+            const n = vertices.length;
+            const name = polygonNames[n] || `Poligon ${n}-Sisi`;
+            shapeNameEl.innerText = name;
+            shapeSidesEl.innerText = `${n} Bucu / ${n} Sisi`;
+            
+            if (n >= 3) {
+                const totalAngle = (n - 2) * 180;
+                shapeAnglesEl.innerText = `${totalAngle}°`;
+            } else {
+                shapeAnglesEl.innerText = `0°`;
+            }
+        }
+
+        function isHoldingVertex() {
+            return selectedVertexIndex !== null;
+        }
+
+        // Fungsi Melukis Poligon pada Kanvas Kanan
+        function drawPolygon(cursorPos = null, progress = 0) {
+            polygonCtx.clearRect(0, 0, polygonCanvas.width, polygonCanvas.height);
+            
+            // Lukis Grid Halus Latar Belakang Kanvas
+            polygonCtx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
+            polygonCtx.lineWidth = 1;
+            const gridSize = 30;
+            for (let x = 0; x < polygonCanvas.width; x += gridSize) {
+                polygonCtx.beginPath();
+                polygonCtx.moveTo(x, 0);
+                polygonCtx.lineTo(x, polygonCanvas.height);
+                polygonCtx.stroke();
+            }
+            for (let y = 0; y < polygonCanvas.height; y += gridSize) {
+                polygonCtx.beginPath();
+                polygonCtx.moveTo(0, y);
+                polygonCtx.lineTo(polygonCanvas.width, y);
+                polygonCtx.stroke();
+            }
+
+            // Lukis Sisi Poligon
+            if (vertices.length > 0) {
+                polygonCtx.beginPath();
+                polygonCtx.moveTo(vertices[0].x, vertices[0].y);
+                for (let i = 1; i < vertices.length; i++) {
+                    polygonCtx.lineTo(vertices[i].x, vertices[i].y);
+                }
+                if (vertices.length >= 3) {
+                    polygonCtx.closePath();
+                }
+                
+                polygonCtx.strokeStyle = '#34d399'; // Emerald 400
+                polygonCtx.lineWidth = 4;
+                polygonCtx.lineJoin = 'round';
+                polygonCtx.stroke();
+                
+                if (vertices.length >= 3) {
+                    polygonCtx.fillStyle = 'rgba(52, 211, 153, 0.12)';
+                    polygonCtx.fill();
+                }
+            }
+
+            // Lukis Bucu / Titik Geometri
+            vertices.forEach((vertex, idx) => {
+                polygonCtx.beginPath();
+                polygonCtx.arc(vertex.x, vertex.y, 9, 0, 2 * Math.PI);
+                polygonCtx.fillStyle = idx === selectedVertexIndex ? '#38bdf8' : '#fbbf24'; // Sky untuk diheret, Amber normal
+                polygonCtx.fill();
+                polygonCtx.strokeStyle = '#ffffff';
+                polygonCtx.lineWidth = 2.5;
+                polygonCtx.stroke();
+
+                // Label Nombor Bucu
+                polygonCtx.fillStyle = '#ffffff';
+                polygonCtx.font = 'bold 12px sans-serif';
+                polygonCtx.fillText(`Bucu ${idx + 1}`, vertex.x + 14, vertex.y + 4);
+            });
+
+            // Lukis Kursor Interaksi AI & Lingkaran Pemasa (Loading Circle)
+            if (cursorPos) {
+                polygonCtx.beginPath();
+                polygonCtx.arc(cursorPos.x, cursorPos.y, 10, 0, 2 * Math.PI);
+                polygonCtx.fillStyle = isHoldingVertex() ? '#38bdf8' : '#f43f5e';
+                polygonCtx.fill();
+                polygonCtx.strokeStyle = '#ffffff';
+                polygonCtx.lineWidth = 2;
+                polygonCtx.stroke();
+
+                // Lingkaran Pemasa 2 Saat untuk Bucu Baru
+                if (progress > 0 && !isHoldingVertex()) {
+                    polygonCtx.beginPath();
+                    polygonCtx.arc(cursorPos.x, cursorPos.y, 18, -Math.PI / 2, (-Math.PI / 2) + (2 * Math.PI * progress));
+                    polygonCtx.strokeStyle = '#fbbf24';
+                    polygonCtx.lineWidth = 4;
+                    polygonCtx.lineCap = 'round';
+                    polygonCtx.stroke();
+                }
+            }
+            updatePolygonStats();
+        }
+
+        // Pemprosesan Hasil MediaPipe Hands
+        function onResults(results) {
+            if (!isWebcamActive) {
+                isWebcamActive = true;
+                loadingOverlay.classList.add('hidden');
+                modeIndicatorText.innerText = "Mod AI Aktif (MediaPipe)";
+                modeDot.classList.remove('bg-amber-500');
+                modeDot.classList.add('bg-emerald-500');
+            }
+
+            cameraCtx.save();
+            cameraCtx.clearRect(0, 0, cameraCanvas.width, cameraCanvas.height);
+            cameraCtx.drawImage(results.image, 0, 0, cameraCanvas.width, cameraCanvas.height);
+
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const landmarks = results.multiHandLandmarks[0];
+                
+                // Lukis Rangka Tangan pada Video
+                drawConnectors(cameraCtx, landmarks, HAND_CONNECTIONS, {color: '#34d399', lineWidth: 3});
+                drawLandmarks(cameraCtx, landmarks, {color: '#f43f5e', lineWidth: 1, radius: 4});
+
+                // Ambil koordinat hujung Jari Telunjuk (Index Tip - 8) dan Ibu Jari (Thumb Tip - 4)
+                const indexTip = landmarks[8];
+                const thumbTip = landmarks[4];
+                const wrist = landmarks[0];
+
+                // Peta koordinat kepada dimensi kanvas poligon (dengan kesan cermin X)
+                const targetX = (1 - indexTip.x) * polygonCanvas.width;
+                const targetY = indexTip.y * polygonCanvas.height;
+                const currentPos = { x: targetX, y: targetY };
+
+                // 1. Semak Isyarat Cubit (Pinch) untuk Heret Bucu
+                const pinchDistance = Math.hypot(indexTip.x - thumbTip.x, indexTip.y - thumbTip.y);
+                const isPinching = pinchDistance < 0.055;
+
+                // 2. Semak Isyarat Tapak Tangan Terbuka (Open Palm) untuk Reset Kanvas
+                const palmOpenCheck = Math.hypot(indexTip.x - wrist.x, indexTip.y - wrist.y);
+                if (palmOpenCheck > 0.42 && vertices.length > 0 && !holdStartTime) {
+                    vertices = [];
+                    selectedVertexIndex = null;
+                    playVoiceFeedback("Kanvas dikosongkan.");
+                    drawPolygon();
+                }
+
+                if (isPinching) {
+                    if (selectedVertexIndex === null) {
+                        const closeIdx = vertices.findIndex(v => Math.hypot(v.x - currentPos.x, v.y - currentPos.y) < 25);
+                        if (closeIdx !== -1) {
+                            selectedVertexIndex = closeIdx;
+                        }
+                    } else {
+                        vertices[selectedVertexIndex] = currentPos;
+                    }
+                    holdStartTime = null;
+                    currentProgress = 0;
+                } else {
+                    selectedVertexIndex = null;
+                    
+                    // 3. Semak Pegangan Telunjuk Statik selama 2 Saat untuk Bucu Baru
+                    if (lastHandPos && Math.hypot(currentPos.x - lastHandPos.x, currentPos.y - lastHandPos.y) < 18) {
+                        if (!holdStartTime) {
+                            holdStartTime = Date.now();
+                        } else {
+                            const elapsed = Date.now() - holdStartTime;
+                            currentProgress = Math.min(elapsed / HOLD_DURATION, 1);
+                            
+                            if (elapsed >= HOLD_DURATION) {
+                                vertices.push({ x: currentPos.x, y: currentPos.y });
+                                playVoiceFeedback(`Bucu ${vertices.length} berjaya ditambah.`);
+                                holdStartTime = null;
+                                currentProgress = 0;
+                            }
+                        }
+                    } else {
+                        holdStartTime = Date.now();
+                        currentProgress = 0;
+                    }
+                }
+                lastHandPos = currentPos;
+                drawPolygon(currentPos, currentProgress);
+            } else {
+                drawPolygon();
+            }
+            cameraCtx.restore();
+        }
+
+        // Initialisasi MediaPipe Hands & Camera Utils
+        const hands = new Hands({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+        });
+        hands.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.65,
+            minTrackingConfidence: 0.65
+        });
+        hands.onResults(onResults);
+
+        const camera = new Camera(videoElement, {
+            onFrame: async () => {
+                await hands.send({ image: videoElement });
+            },
+            width: 640,
+            height: 480
+        });
+
+        camera.start().catch(err => {
+            console.warn("Kamera tidak dapat diakses. Mengaktifkan mod Fallback Tetikus sepenuhnya.", err);
+            loadingOverlay.innerHTML = `
+                <div class="p-6 text-center">
+                    <p class="text-amber-400 font-bold mb-2">⚠️ Kamera Tidak Dikesan / Disekat</p>
+                    <p class="text-xs text-slate-300">Mod Interaktif Tetikus & Sentuhan diaktifkan secara automatik sepenuhnya.</p>
+                </div>
+            `;
+            setTimeout(() => loadingOverlay.classList.add('hidden'), 2500);
+            modeIndicatorText.innerText = "Mod Tetikus (Fallback)";
+            modeDot.classList.remove('bg-amber-500');
+            modeDot.classList.add('bg-sky-500');
+        });
+
+        // Sokongan Interaksi Tetikus & Sentuhan (Fallback Langsung pada Kanvas Poligon)
+        let isMouseDown = false;
+
+        polygonCanvas.addEventListener('mousedown', (e) => {
+            const rect = polygonCanvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            
+            const closeIdx = vertices.findIndex(v => Math.hypot(v.x - x, v.y - y) < 22);
+            if (closeIdx !== -1) {
+                selectedVertexIndex = closeIdx;
+            } else {
+                vertices.push({ x, y });
+                playVoiceFeedback(`Bucu ${vertices.length} ditambah.`);
+                updatePolygonStats();
+            }
+            isMouseDown = true;
+            drawPolygon({x, y});
+        });
+
+        polygonCanvas.addEventListener('mousemove', (e) => {
+            const rect = polygonCanvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+
+            if (selectedVertexIndex !== null && isMouseDown) {
+                vertices[selectedVertexIndex] = { x, y };
+                drawPolygon({x, y});
+            } else {
+                drawPolygon({x, y});
+            }
+        });
+
+        window.addEventListener('mouseup', () => {
+            isMouseDown = false;
+            selectedVertexIndex = null;
+        });
+
+        // Butang Reset Manual
+        clearBtn.addEventListener('click', () => {
+            vertices = [];
+            selectedVertexIndex = null;
+            playVoiceFeedback("Kanvas telah diset semula.");
+            drawPolygon();
+        });
+
+        // Render permulaan
+        drawPolygon();
+    </script>
+</body>
+</html>
